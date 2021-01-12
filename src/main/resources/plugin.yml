@@ -1,0 +1,4 @@
+name: TravelersWand
+version: ${project.version}
+main: devlaunchers.eddisond.travelerswand.TravelersWand
+api-version: 1.16
