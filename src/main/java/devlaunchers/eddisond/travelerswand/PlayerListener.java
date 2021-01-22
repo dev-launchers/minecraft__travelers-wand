@@ -11,19 +11,46 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
-import org.bukkit.event.player.PlayerBedEnterEvent;
-import org.bukkit.event.player.PlayerInteractEntityEvent;
-import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.*;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.util.Vector;
 
+import javax.sound.midi.Track;
+import java.io.File;
+import java.io.IOException;
 import java.util.Objects;
+import java.util.UUID;
+
 
 public class PlayerListener implements Listener
 {
-    Location respawnLocation;
-    Location distanceToRespawnLocation;
+    double distanceToRespawnLocation;
+    final int maxTravelDistance = 256;
+    WandData wandData;
+
+    @EventHandler
+    public void onPlayerPreLogin(AsyncPlayerPreLoginEvent event) {
+        UUID playerUUID = event.getUniqueId();
+
+        File file = new File(TravelersWand.getPlugin().getDataFolder() + File.separator + playerUUID + ".dat");
+
+        if(!file.exists()){
+            // Generate it
+            new WandData(playerUUID).save(TravelersWand.getPlugin().getDataFolder().getAbsolutePath() + "/" + playerUUID + ".dat");
+        }
+
+        // Initial load of WandData
+        wandData = new WandData((WandData) Objects.requireNonNull(WandData.load(TravelersWand.getPlugin().getDataFolder().getAbsolutePath() + "/" + playerUUID + ".dat")));
+    }
+
+    @EventHandler
+    public void onPlayerJoinEvent(PlayerJoinEvent event) {
+        Player player = event.getPlayer();
+
+        WandData.updateRespawnLocation(player.getUniqueId(), player.getBedSpawnLocation());
+        wandData = new WandData((WandData) Objects.requireNonNull(WandData.load(TravelersWand.getPlugin().getDataFolder().getAbsolutePath() + "/" + player.getUniqueId() + ".dat")));
+    }
 
     @EventHandler
     public void onBedEnter(final PlayerBedEnterEvent event)
@@ -32,13 +59,11 @@ public class PlayerListener implements Listener
 
         if(event.getBedEnterResult() != PlayerBedEnterEvent.BedEnterResult.OK) return;
 
-        Bukkit.getScheduler().runTaskLater(
-                TravelersWand.getPlugin(), () -> Bukkit.getServer().broadcastMessage(player.getName() + " set bed spawn location."),
-                100/20
-        );
+        // Update respawnLocation AND reload wandData file
+        WandData.updateRespawnLocation(player.getUniqueId(), player.getBedSpawnLocation());
+        wandData = new WandData((WandData) Objects.requireNonNull(WandData.load(TravelersWand.getPlugin().getDataFolder().getAbsolutePath() + "/" + player.getUniqueId() + ".dat")));
 
-        Location bedSpawnLocation = player.getBedSpawnLocation();
-        Bukkit.getServer().broadcastMessage("Player spawn location set to: " + bedSpawnLocation);
+        Bukkit.getServer().broadcastMessage("Player spawn location set to: " + wandData.playerRespawnLocation);
     }
 
     @EventHandler(priority = EventPriority.HIGH)
@@ -51,43 +76,63 @@ public class PlayerListener implements Listener
         ItemStack mainHand = inventory.getItemInMainHand();
         ItemStack offHand = inventory.getItemInOffHand();
 
-        if(respawnLocation != null && action == Action.RIGHT_CLICK_AIR && mainHand.getType() == Material.EMERALD) {
+        wandData = new WandData((WandData) Objects.requireNonNull(WandData.load(TravelersWand.getPlugin().getDataFolder().getAbsolutePath() + "/" + player.getUniqueId() + ".dat")));
+
+        if(action == Action.RIGHT_CLICK_AIR && mainHand.getType() == Material.EMERALD) {
+            if(wandData.playerRespawnLocation == null) return;
             // travel with the wand
             // Wand.travel()
 
-            Location pLoc = player.getLocation();
-            Location rLoc = respawnLocation;
-            Vector pVec = new Vector(pLoc.getX(), pLoc.getY(), pLoc.getZ());
-            Vector rVec = new Vector(rLoc.getX(), rLoc.getY(), rLoc.getZ());
-            double dVec = rVec.distance(pVec);
+            Location playerLocation = player.getLocation();
+            Location playerRespawnLocation = wandData.playerRespawnLocation;
 
-            Bukkit.getServer().dispatchCommand(Bukkit.getConsoleSender(), "tp " + player.getName() + " " + respawnLocation.getBlockX() + " " + respawnLocation.getBlockY() + " " + respawnLocation.getBlockZ());
-            Bukkit.getServer().broadcastMessage(player.getName() + " travelled " + dVec + " blocks.");
+            Vector playerLocationVector = new Vector(playerLocation.getX(), playerLocation.getY(), playerLocation.getZ());
+            Vector respawnLocationVector = new Vector(playerRespawnLocation.getX(), playerRespawnLocation.getY(), playerRespawnLocation.getZ());
+            distanceToRespawnLocation = respawnLocationVector.distance(playerLocationVector);
+
+            if(distanceToRespawnLocation > maxTravelDistance) {
+                player.sendMessage("You are too far away.");
+            } else {
+
+                // Teleport the player
+                Bukkit.getServer().dispatchCommand(
+                        Bukkit.getConsoleSender(),
+                        "tp " + player.getName() + " "
+                                + playerRespawnLocation.getBlockX() + " "
+                                + playerRespawnLocation.getBlockY() + " " + playerRespawnLocation.getBlockZ()
+                );
+
+                Bukkit.getServer().broadcastMessage(player.getName() + " travelled " + (int)distanceToRespawnLocation + " blocks.");
+            }
 
         } else if(action == Action.RIGHT_CLICK_BLOCK && Objects.requireNonNull(event.getClickedBlock()).getType() == Material.LODESTONE) {
             // recharge the wand
             // Wand.recharge()
+            Bukkit.getServer().broadcastMessage(String.valueOf(wandData.playerRespawnLocation));
         }
     }
 
-    /*
-    Or you could use https://hub.spigotmc.org/javadocs/bukkit/org/bukkit/Bukkit.html#dispatchCommand(org.bukkit.command.CommandSender, java.lang.String)
-    with Bukkit.getConsoleCommandSender() as CommandSender. Then dispatch the command "/spawnPoint playerName locX locY locZ" and that should work.*/
-
     @EventHandler(priority = EventPriority.HIGH)
     public void onConnectWand(PlayerInteractEntityEvent event) {
-        // EVENT THAT HANDLES CONNECTING TWO PLAYERS WANDS / THEIR SPAWNS WITH EACH OTHER
         Player player = event.getPlayer();
 
         if(event.getRightClicked() instanceof org.bukkit.entity.Cow) {
             Entity entity = event.getRightClicked();
 
             World world = entity.getWorld();
-            Location loc = entity.getLocation();
-            respawnLocation = new Location(world, loc.getBlockX(), loc.getBlockY() + 1, loc.getBlockZ()); // for future calculations?
+            Location entityLocation = entity.getLocation();
 
-            Bukkit.getServer().dispatchCommand(Bukkit.getConsoleSender(), "spawnpoint " + player.getName() + " " + loc.getBlockX() + " " + loc.getBlockY() + " " + loc.getBlockZ());
+            WandData.updateRespawnLocation(
+                    player.getUniqueId(), new Location(world, entityLocation.getBlockX(), entityLocation.getBlockY() + 1, entityLocation.getBlockZ())
+            );
+
+            wandData = new WandData((WandData) Objects.requireNonNull(WandData.load(TravelersWand.getPlugin().getDataFolder().getAbsolutePath() + "/" + player.getUniqueId() + ".dat")));
+
+            Bukkit.getServer().broadcastMessage("wandData respawnlocation: " + wandData.playerRespawnLocation);
+
+            Bukkit.getServer().dispatchCommand(
+                    Bukkit.getConsoleSender(), "spawnpoint " + player.getName() + " " + entityLocation.getBlockX() + " " + entityLocation.getBlockY() + " " + entityLocation.getBlockZ()
+            );
         }
     }
-
 }
