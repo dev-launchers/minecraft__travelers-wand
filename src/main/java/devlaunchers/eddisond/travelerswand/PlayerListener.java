@@ -64,6 +64,7 @@ public class PlayerListener implements Listener
         wandData = new WandData((WandData) Objects.requireNonNull(WandData.load(TravelersWand.getPlugin().getDataFolder().getAbsolutePath() + "/" + player.getUniqueId() + ".dat")));
 
         Bukkit.getServer().broadcastMessage("Player spawn location set to: " + wandData.playerRespawnLocation);
+        player.sendMessage("Player spawn location set to: " + wandData.playerRespawnLocation);
     }
 
     @EventHandler(priority = EventPriority.HIGH)
@@ -105,10 +106,20 @@ public class PlayerListener implements Listener
                 Bukkit.getServer().broadcastMessage(player.getName() + " travelled " + (int)distanceToRespawnLocation + " blocks.");
             }
 
-        } else if(action == Action.RIGHT_CLICK_BLOCK && Objects.requireNonNull(event.getClickedBlock()).getType() == Material.LODESTONE) {
-            // recharge the wand
-            // Wand.recharge()
-            Bukkit.getServer().broadcastMessage(String.valueOf(wandData.playerRespawnLocation));
+        } else if(action == Action.RIGHT_CLICK_BLOCK && Objects.requireNonNull(event.getClickedBlock()).getType() == Material.GOLD_BLOCK) {
+            for(Entity otherEntity : player.getWorld().getLivingEntities()) {
+                if(otherEntity.getUniqueId().equals(wandData.linkedEntityUUID)) {
+                    // Teleport the player to linked player/entity
+                    Location linkedEntityLocation = otherEntity.getLocation();
+
+                    Bukkit.getServer().dispatchCommand(
+                            Bukkit.getConsoleSender(),
+                            "tp " + player.getName() + " "
+                                    + linkedEntityLocation.getBlockX() + " "
+                                    + linkedEntityLocation.getBlockY() + " " + linkedEntityLocation.getBlockZ()
+                    );
+                }
+            }
         }
     }
 
@@ -122,17 +133,21 @@ public class PlayerListener implements Listener
             World world = entity.getWorld();
             Location entityLocation = entity.getLocation();
 
-            WandData.updateRespawnLocation(
+            WandData.updateLinkedEntity(player.getUniqueId(), entity.getUniqueId());
+            wandData = new WandData((WandData) Objects.requireNonNull(WandData.load(TravelersWand.getPlugin().getDataFolder().getAbsolutePath() + "/" + player.getUniqueId() + ".dat")));
+            player.sendMessage("Linked " + player.getName() + " with " + entity.getName() + ". UUID: " + entity.getUniqueId());
+
+            /*WandData.updateRespawnLocation(
                     player.getUniqueId(), new Location(world, entityLocation.getBlockX(), entityLocation.getBlockY() + 1, entityLocation.getBlockZ())
             );
 
             wandData = new WandData((WandData) Objects.requireNonNull(WandData.load(TravelersWand.getPlugin().getDataFolder().getAbsolutePath() + "/" + player.getUniqueId() + ".dat")));
 
-            Bukkit.getServer().broadcastMessage("wandData respawnlocation: " + wandData.playerRespawnLocation);
+            //Bukkit.getServer().broadcastMessage("wandData respawnlocation: " + wandData.playerRespawnLocation);
 
             Bukkit.getServer().dispatchCommand(
                     Bukkit.getConsoleSender(), "spawnpoint " + player.getName() + " " + entityLocation.getBlockX() + " " + entityLocation.getBlockY() + " " + entityLocation.getBlockZ()
-            );
+            );*/
         }
     }
 }
