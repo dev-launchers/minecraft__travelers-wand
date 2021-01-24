@@ -18,7 +18,7 @@ import java.util.zip.GZIPOutputStream;
 
 public class SerializableData implements Serializable {
 
-    public boolean save(String filePath) {
+    public boolean saveFile(String filePath) {
         try {
             FileOutputStream fileOut = new FileOutputStream(filePath);
             GZIPOutputStream gzOut = new GZIPOutputStream(fileOut);
@@ -33,7 +33,7 @@ public class SerializableData implements Serializable {
         }
     }
 
-    public static SerializableData load(String filePath) {
+    public static SerializableData loadFile(String filePath) {
         try {
             FileInputStream fileIn = new FileInputStream(filePath);
             GZIPInputStream gzIn = new GZIPInputStream(fileIn);

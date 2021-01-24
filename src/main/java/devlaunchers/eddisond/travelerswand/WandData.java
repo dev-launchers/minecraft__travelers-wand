@@ -2,18 +2,15 @@ package devlaunchers.eddisond.travelerswand;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.entity.Player;
 
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Objects;
+import java.io.File;
 import java.util.UUID;
 import java.util.logging.Level;
 
 public class WandData extends SerializableData {
 
     private static final long serialVersionUID = 7883785201904407264L;
-
-    private static final String pluginDataFolderAbsolute = TravelersWand.getPlugin().getDataFolder().getAbsolutePath();
 
     public final UUID playerUUID;
     public UUID linkedEntityUUID;
@@ -23,6 +20,7 @@ public class WandData extends SerializableData {
     // Used for saving
     public WandData(UUID playerUUID) {
         this.playerUUID = playerUUID;
+        new WandData(playerUUID).saveFile(getDatFilePath(CommandUtils.getPlayerByUUID(playerUUID)));
     }
 
     public WandData(UUID playerUUID, UUID linkedUUID) {
@@ -42,14 +40,18 @@ public class WandData extends SerializableData {
         this.playerRespawnLocation = loadedSerializableData.playerRespawnLocation;
     }
 
-    public static void updateRespawnLocation(UUID playerUUID, Location playerRespawnLocation) {
-        new WandData(playerUUID, playerRespawnLocation).save(TravelersWand.getPlugin().getDataFolder().getAbsolutePath() + "/" + playerUUID + ".dat");
+    public static void updateRespawnLocation(Player player, Location playerRespawnLocation) {
+        new WandData(player.getUniqueId(), playerRespawnLocation).saveFile(getDatFilePath(player));
         Bukkit.getServer().getLogger().log(Level.INFO, "Data Saved - updateRespawnLocation");
     }
 
-    public static void updateLinkedEntity(UUID playerUUID, UUID linkedUUID) {
-        new WandData(playerUUID, linkedUUID).save(TravelersWand.getPlugin().getDataFolder().getAbsolutePath() + "/" + playerUUID + ".dat");
+    public static void updateLinkedEntity(Player player, UUID linkedUUID) {
+        new WandData(player.getUniqueId(), linkedUUID).saveFile(getDatFilePath(player));
         Bukkit.getServer().getLogger().log(Level.INFO, "Data Saved - updateLinkedPlayer");
+    }
+
+    public static String getDatFilePath(Player player) {
+        return TravelersWand.getPlugin().getDataFolder().getAbsolutePath() + File.separator + player.getUniqueId() + ".dat";
     }
 
 }
