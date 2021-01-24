@@ -16,9 +16,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.util.Vector;
 
-import javax.sound.midi.Track;
 import java.io.File;
-import java.io.IOException;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -33,10 +31,11 @@ public class PlayerListener implements Listener
     public void onPlayerPreLogin(AsyncPlayerPreLoginEvent event) {
         UUID playerUUID = event.getUniqueId();
 
+        // Create potential .dat file for user
         File file = new File(TravelersWand.getPlugin().getDataFolder() + File.separator + playerUUID + ".dat");
 
+        // If it does not exist already, actually create it
         if(!file.exists()){
-            // Generate it
             new WandData(playerUUID).save(TravelersWand.getPlugin().getDataFolder().getAbsolutePath() + "/" + playerUUID + ".dat");
         }
 
@@ -127,7 +126,7 @@ public class PlayerListener implements Listener
     public void onConnectWand(PlayerInteractEntityEvent event) {
         Player player = event.getPlayer();
 
-        if(event.getRightClicked() instanceof org.bukkit.entity.Cow) {
+        if(event.getRightClicked() instanceof Player) { // switch between COW and Player for offline/online testing
             Entity entity = event.getRightClicked();
 
             World world = entity.getWorld();
