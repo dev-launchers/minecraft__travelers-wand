@@ -142,7 +142,7 @@ public class PlayerListener implements Listener
         PlayerInventory inventory = player.getInventory();
         ItemStack mainHand = inventory.getItemInMainHand();
 
-        if(event.getRightClicked() instanceof org.bukkit.entity.Cow && mainHand.getType() == Material.EMERALD) { // switch between COW and Player for offline/online testing
+        if(event.getRightClicked() instanceof Player && mainHand.getType() == Material.EMERALD) { // switch between org.bukkit.entity.Cow and Player for offline/online testing
             Entity entity = event.getRightClicked();
 
             if(entity.getUniqueId().equals(wandData.linkedEntityUUID)) return; // Ignore if already linked (for now, might change later)
