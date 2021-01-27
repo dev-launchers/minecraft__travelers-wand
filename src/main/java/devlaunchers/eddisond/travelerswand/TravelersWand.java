@@ -1,6 +1,16 @@
 package devlaunchers.eddisond.travelerswand;
 
+import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.java.JavaPlugin;
+
+import java.io.File;
+import java.io.IOException;
 
 public final class TravelersWand extends JavaPlugin {
 
@@ -9,23 +19,26 @@ public final class TravelersWand extends JavaPlugin {
         return plugin;
     }
 
-    @Override
-    public void onEnable() {
-        plugin = this;
+    static PlayerData playerData;
+    static PlayerData getPlayerData() {
+        return playerData;
+    }
 
-        /* Create plugin data folder, if it doesn't exist yet */
-        if(!plugin.getDataFolder().exists()) {
-            try {
-                plugin.getDataFolder().mkdir();
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
+    @Override
+    public void onEnable(){
+        plugin = this;
+        playerData = new PlayerData();
+
+        // Creates the plugins data folder "TravelersWand", if it doesn't exist yet
+        if(!plugin.getDataFolder().exists())
+        {
+            plugin.getDataFolder().mkdirs();
         }
 
+        // Register plugin listener(s)
         getServer().getPluginManager().registerEvents(new PlayerListener(), this);
     }
 
     @Override
-    public void onDisable() {
-    }
+    public void onDisable() {}
 }

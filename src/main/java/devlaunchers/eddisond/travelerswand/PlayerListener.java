@@ -1,6 +1,5 @@
 package devlaunchers.eddisond.travelerswand;
 
-import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
@@ -17,54 +16,72 @@ import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.util.Vector;
 
 import java.io.File;
-import java.util.*;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
 
+public class PlayerListener implements Listener {
 
-public class PlayerListener implements Listener
-{
     final int maxDirectTravelStep = 64; // max distance player has to be from linked location to travel immediately
     final int maxIndividualTravelStep = 32; // max distance player can tp with each use, when outside of direct travel distance
 
-    WandData wandData;
-
-    @EventHandler
-    public void onPlayerPreLogin(AsyncPlayerPreLoginEvent event) {
-        UUID playerUUID = event.getUniqueId();
-        Player player = CommandUtils.getPlayerByUUID(playerUUID);
-
-        // Create potential .dat file for user
-        File file = new File(WandData.getDatFilePath(player));
-
-        // If it does not exist already, actually create it
-        if(!file.exists()){
-            new WandData(playerUUID).saveFile(WandData.getDatFilePath(player));
-        }
-
-        // Initial load of WandData
-        wandData = new WandData((WandData) Objects.requireNonNull(WandData.loadFile(WandData.getDatFilePath(player))));
-    }
+    UUID linkedUUID;
 
     @EventHandler
     public void onPlayerJoinEvent(PlayerJoinEvent event) {
         Player player = event.getPlayer();
+        UUID playerUUID = player.getUniqueId();
 
-        WandData.updateRespawnLocation(player, player.getBedSpawnLocation());
-        wandData = new WandData((WandData) Objects.requireNonNull(WandData.loadFile(WandData.getDatFilePath(player))));
+        if(TravelersWand.getPlayerData() != null) {
+            TravelersWand.getPlayerData().createFile(event.getPlayer().getUniqueId());
+
+            System.out.println("playerData and .yml file exist");
+            System.out.println("yml file name: " + TravelersWand.getPlayerData().file.getName());
+
+            // uuid is not loaded into memory yet || player data file somehow got removed as the plugin was running
+            if(linkedUUID == null) {
+                // try to get uuid in string format, from player data
+                String uuidString = TravelersWand.getPlayerData().fileConfig.getString("linkedUUID");
+
+                if(uuidString != null) {
+                    linkedUUID = UUID.fromString(uuidString);
+                }
+            } // otherwise, just continue on with the program :)
+        }
     }
 
     @EventHandler
-    public void onBedEnter(final PlayerBedEnterEvent event)
-    {
+    public void onPlayerLeaveEvent(PlayerQuitEvent event) {
+        try {
+            // Save "playerUUID".yml file
+            TravelersWand.getPlayerData().fileConfig.save(TravelersWand.getPlayerData().file);
+
+            // Attributes, that should not persist in memory after player leaves, are set to null
+            if(linkedUUID != null) linkedUUID = null;
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onConnectWand(PlayerInteractEntityEvent event) {
         Player player = event.getPlayer();
+        PlayerInventory inventory = player.getInventory();
+        ItemStack mainHand = inventory.getItemInMainHand();
 
-        if(event.getBedEnterResult() != PlayerBedEnterEvent.BedEnterResult.OK) return;
+        if(event.getRightClicked() instanceof Player && mainHand.getType() == Material.EMERALD) { // switch between org.bukkit.entity.Cow and Player for offline / online testing
+            Entity entity = event.getRightClicked();
 
-        // Update respawnLocation AND reload wandData file
-        WandData.updateRespawnLocation(player, player.getBedSpawnLocation());
-        wandData = new WandData((WandData) Objects.requireNonNull(WandData.loadFile(WandData.getDatFilePath(player))));
+            if(entity.getUniqueId().equals(linkedUUID)) return; // Ignore if already linked (for now, might change later)
 
-        Bukkit.getServer().broadcastMessage("Player spawn location set to: " + wandData.playerRespawnLocation);
-        player.sendMessage("Player spawn location set to: " + wandData.playerRespawnLocation);
+            TravelersWand.getPlayerData().fileConfig.set("linkedUUID", entity.getUniqueId().toString());
+            linkedUUID = entity.getUniqueId();
+
+            player.sendMessage(player.getUniqueId() + " linked with " + linkedUUID);
+        }
     }
 
     @EventHandler(priority = EventPriority.HIGH)
@@ -76,11 +93,9 @@ public class PlayerListener implements Listener
         Action action = event.getAction();
         ItemStack mainHand = inventory.getItemInMainHand();
 
-        wandData = new WandData((WandData) Objects.requireNonNull(WandData.loadFile(WandData.getDatFilePath(player))));
-
         // Teleport (as close as possible) to linked entity
         if(action == Action.RIGHT_CLICK_AIR && mainHand.getType() == Material.EMERALD) {
-            if(wandData.linkedEntityUUID == null) {
+            if(linkedUUID == null || linkedUUID.toString().isEmpty()) {
                 player.sendMessage(TravelersWand.getPlugin().getName() + ": You have to link to another player first, before being able to use this item.");
                 return;
             }
@@ -89,7 +104,7 @@ public class PlayerListener implements Listener
             Entity linkedEntity = null;
 
             for(Entity otherEntity : player.getWorld().getLivingEntities()) {
-                if(otherEntity.getUniqueId().equals(wandData.linkedEntityUUID)) {
+                if(otherEntity.getUniqueId().equals(linkedUUID)) {
                     // Teleport the player to linked player/entity
                     linkedEntity = otherEntity;
                 }
@@ -109,7 +124,8 @@ public class PlayerListener implements Listener
 
             if (blocksToTravel <= maxDirectTravelStep) {
                 // Teleport player directly to linked entity
-                CommandUtils.teleportPlayer(player, linkedEntityLocation);
+                player.teleport(linkedEntityLocation);
+
                 blocksTravelled = (int)blocksToTravel;
             } else {
                 List<Block> possibleTravelBlocks = getRelativeSurfaceBlocks(playerLocation, maxIndividualTravelStep);
@@ -123,42 +139,15 @@ public class PlayerListener implements Listener
                         travelBlock.getLocation().getZ()
                 );
 
-                CommandUtils.teleportPlayer(player, possibleLocation);
-
-
-                // Block safeBlock = player.getWorld().getHighestBlockAt(possibleLocation);
-                // player.sendMessage("safeBlock at: " + safeBlock.getLocation());
-
-                //player.sendMessage("distanceVec:" + distanceVec);
+                player.teleport(possibleLocation);
+                blocksTravelled = maxIndividualTravelStep;
             }
 
             player.sendMessage(TravelersWand.getPlugin().getName() + ": you travelled " + blocksTravelled + " blocks.");
         }
     }
 
-    @EventHandler(priority = EventPriority.HIGH)
-    public void onConnectWand(PlayerInteractEntityEvent event) {
-        Player player = event.getPlayer();
-        PlayerInventory inventory = player.getInventory();
-        ItemStack mainHand = inventory.getItemInMainHand();
-
-        if(event.getRightClicked() instanceof Player && mainHand.getType() == Material.EMERALD) { // switch between org.bukkit.entity.Cow and Player for offline/online testing
-            Entity entity = event.getRightClicked();
-
-            if(entity.getUniqueId().equals(wandData.linkedEntityUUID)) return; // Ignore if already linked (for now, might change later)
-
-            WandData.updateLinkedEntity(player, entity.getUniqueId());
-            wandData = new WandData((WandData) Objects.requireNonNull(WandData.loadFile(WandData.getDatFilePath(player))));
-            player.sendMessage("Linked " + player.getName() + " with " + entity.getName() + ". UUID: " + entity.getUniqueId());
-        }
-    }
-
-    /**
-     * Checks if a location is safe (solid ground with 2 breathable blocks)
-     *
-     * @param location Location to check
-     * @return True if location is safe
-     */
+    // Doesn't really work... Hmmmm
     public static boolean isSafeLocation(Location location) {
         Block feet = location.getBlock();
         if (!feet.getType().isTransparent() && !feet.getLocation().add(0, 1, 0).getBlock().getType().isTransparent()) {
@@ -174,12 +163,6 @@ public class PlayerListener implements Listener
         }
         return true;
     }
-
-    /*Say you want the surface blocks within radius r.
-    You get the center's x coordinate xc, iterate from x = xc-r to xc+r (inclusive).
-    You get the center's z coordinate zc, iterate from z = zc-r to zc+r (inclusive).
-    Within the two nested loops, you make sure the block is within the radius ((xc - x) * (xc - x) + (zc - z) * (zc - z) <= r * r).
-    If it is, then World#getHighestBlockAt at the x and z and do with it what you please.*/
 
     private List<Block> getRelativeSurfaceBlocks(Location location, int radius) {
         List<Block> blocks = new ArrayList<>();
@@ -203,10 +186,10 @@ public class PlayerListener implements Listener
         Block finalBlock = null;
         int smallestDist = Integer.MAX_VALUE;
 
-        for(Block block : possibleTravelBlocks) {
-            int tempDist = (int)targetLocation.toVector().distance(block.getLocation().toVector());
+        for (Block block : possibleTravelBlocks) {
+            int tempDist = (int) targetLocation.toVector().distance(block.getLocation().toVector());
 
-            if(tempDist < smallestDist) {
+            if (tempDist < smallestDist) {
                 smallestDist = tempDist;
                 finalBlock = block;
             }
