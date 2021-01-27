@@ -17,15 +17,12 @@ import org.bukkit.util.Vector;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.UUID;
+import java.util.*;
 
 public class PlayerListener implements Listener {
 
-    final int maxDirectTravelStep = 64; // max distance player has to be from linked location to travel immediately
-    final int maxIndividualTravelStep = 32; // max distance player can tp with each use, when outside of direct travel distance
+    final int maxDirectTravelStep = 8; // max distance player has to be from linked location to travel immediately
+    final int maxIndividualTravelStep = 4; // max distance player can tp with each use, when outside of direct travel distance
 
     UUID linkedUUID;
 
@@ -72,7 +69,7 @@ public class PlayerListener implements Listener {
         PlayerInventory inventory = player.getInventory();
         ItemStack mainHand = inventory.getItemInMainHand();
 
-        if(event.getRightClicked() instanceof Player && mainHand.getType() == Material.EMERALD) { // switch between org.bukkit.entity.Cow and Player for offline / online testing
+        if((event.getRightClicked() instanceof org.bukkit.entity.Cow || event.getRightClicked() instanceof Player) && mainHand.getType() == Material.EMERALD) { // switch between org.bukkit.entity.Cow and Player for offline / online testing
             Entity entity = event.getRightClicked();
 
             if(entity.getUniqueId().equals(linkedUUID)) return; // Ignore if already linked (for now, might change later)
@@ -105,7 +102,6 @@ public class PlayerListener implements Listener {
 
             for(Entity otherEntity : player.getWorld().getLivingEntities()) {
                 if(otherEntity.getUniqueId().equals(linkedUUID)) {
-                    // Teleport the player to linked player/entity
                     linkedEntity = otherEntity;
                 }
             }
@@ -120,12 +116,37 @@ public class PlayerListener implements Listener {
             Vector playerVec = playerLocation.toVector();
 
             double blocksToTravel = linkedVec.distance(playerVec);
-            int blocksTravelled = 0;
+            int blocksTravelled;
 
+            // Is close enough to directly teleport to linked entity
             if (blocksToTravel <= maxDirectTravelStep) {
-                // Teleport player directly to linked entity
-                player.teleport(linkedEntityLocation);
+                // Get surface blocks around linked entity
+                List<Block> linkedEntitySurfaceBlocks = getRelativeSurfaceBlocks(linkedEntityLocation, 8);
+                int surfaceBlocksCount = linkedEntitySurfaceBlocks.size();
+                Block linkedEntityBlock = linkedEntityLocation.getBlock();
+                Location safeTeleportLocation = null;
+                Random rand = new Random();
 
+                for(Block block : linkedEntitySurfaceBlocks) {
+                    if(block == linkedEntityBlock) {
+                        surfaceBlocksCount--;
+                        continue;
+                    }
+                    int randSurfaceBlockIndex = rand.nextInt(surfaceBlocksCount);
+                    Block randomSurfaceBlock = linkedEntitySurfaceBlocks.get(randSurfaceBlockIndex);
+                    safeTeleportLocation = new Location(
+                            player.getWorld(),
+                            randomSurfaceBlock.getX() + 0.5,
+                            player.getWorld().getHighestBlockAt(randomSurfaceBlock.getLocation()).getY() + 1,
+                            randomSurfaceBlock.getZ() + 0.5
+                    );
+                    break;
+                }
+                if(safeTeleportLocation != null) {
+                    player.teleport(safeTeleportLocation);
+                } else {
+                    player.sendMessage(TravelersWand.getPlugin().getName() + ": No safe location around linked entity to teleport to.");
+                }
                 blocksTravelled = (int)blocksToTravel;
             } else {
                 List<Block> possibleTravelBlocks = getRelativeSurfaceBlocks(playerLocation, maxIndividualTravelStep);
@@ -134,10 +155,13 @@ public class PlayerListener implements Listener {
 
                 Location possibleLocation = new Location(
                         player.getWorld(),
-                        travelBlock.getLocation().getX(),
+                        travelBlock.getLocation().getX() + 0.5,
                         player.getWorld().getHighestBlockAt(travelBlock.getLocation()).getY() + 1,
-                        travelBlock.getLocation().getZ()
+                        travelBlock.getLocation().getZ() + 0.5
                 );
+
+                Block feet = new Location(player.getWorld(), possibleLocation.getX(), possibleLocation.getY()-1, possibleLocation.getZ()).getBlock();
+                //System.out.println(feet.getType());
 
                 player.teleport(possibleLocation);
                 blocksTravelled = maxIndividualTravelStep;
