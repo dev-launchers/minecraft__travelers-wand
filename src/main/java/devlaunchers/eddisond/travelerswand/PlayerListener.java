@@ -2,6 +2,7 @@ package devlaunchers.eddisond.travelerswand;
 
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Entity;
@@ -13,11 +14,11 @@ import org.bukkit.event.block.Action;
 import org.bukkit.event.player.*;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
-import org.bukkit.util.Vector;
 
-import java.io.File;
 import java.io.IOException;
 import java.util.*;
+import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 public class PlayerListener implements Listener {
 
@@ -28,9 +29,6 @@ public class PlayerListener implements Listener {
 
     @EventHandler
     public void onPlayerJoinEvent(PlayerJoinEvent event) {
-        Player player = event.getPlayer();
-        UUID playerUUID = player.getUniqueId();
-
         if(TravelersWand.getPlayerData() != null) {
             TravelersWand.getPlayerData().createFile(event.getPlayer().getUniqueId());
 
@@ -90,136 +88,144 @@ public class PlayerListener implements Listener {
         Action action = event.getAction();
         ItemStack mainHand = inventory.getItemInMainHand();
 
+        /* START: JUST FOR TESTING */
+        if(action == Action.RIGHT_CLICK_BLOCK && mainHand.getType() == Material.DIAMOND) {
+            Block clickedBlock = event.getClickedBlock();
+            assert clickedBlock != null;
+
+            List<Block> blocks = BlockUtils.getBlocksInPlane(clickedBlock, 2, 2);
+            for(Block b : blocks) {
+                b.setType(Material.LIME_WOOL);
+            }
+        }
+
+        if(action == Action.RIGHT_CLICK_BLOCK && mainHand.getType() == Material.GOLDEN_CARROT) {
+            Block clickedBlock = event.getClickedBlock();
+            assert clickedBlock != null;
+
+            player.sendMessage("Average light level in area: " + BlockUtils.getAverageLightLevelInArea(clickedBlock, 2, 2, true));
+        }
+
+        if(action == Action.RIGHT_CLICK_BLOCK && mainHand.getType() == Material.COMPASS) {
+            Block clickedBlock = event.getClickedBlock();
+            assert clickedBlock != null;
+
+            Block blockAboveClicked = BlockUtils.getFirstSolidBlockAbove(clickedBlock);
+        }
+
+        /* END: JUST FOR TESTING */
+
         // Teleport (as close as possible) to linked entity
         if(action == Action.RIGHT_CLICK_AIR && mainHand.getType() == Material.EMERALD) {
-            if(linkedUUID == null || linkedUUID.toString().isEmpty()) {
+            
+            // Is wand being used in any other world than the "NORMAL" / Overworld?
+            if(!isInWorldEnvironment(player, World.Environment.NORMAL)) {
+                player.sendMessage(TravelersWand.getPlugin().getName() + ": Currently only works in the Overworld.");
+                return;
+            }
+
+            // Is player linked yet?
+            if(!isLinkedUUIDSet(linkedUUID)) {
                 player.sendMessage(TravelersWand.getPlugin().getName() + ": You have to link to another player first, before being able to use this item.");
                 return;
             }
 
-            Location playerLocation = player.getLocation();
-            Entity linkedEntity = null;
-
-            for(Entity otherEntity : player.getWorld().getLivingEntities()) {
-                if(otherEntity.getUniqueId().equals(linkedUUID)) {
-                    linkedEntity = otherEntity;
-                }
-            }
+            Entity linkedEntity = getEntityInWorldByUUID(linkedUUID, player.getWorld());
 
             if(linkedEntity == null) {
                 player.sendMessage(TravelersWand.getPlugin().getName() + ": Could not get location of linked entity.");
                 return;
             }
 
-            Location linkedEntityLocation = linkedEntity.getLocation();
-            Vector linkedVec = linkedEntityLocation.toVector();
-            Vector playerVec = playerLocation.toVector();
+            Location linkedLocation = linkedEntity.getLocation();
+            Location playerLocation = player.getLocation();
 
-            double blocksToTravel = linkedVec.distance(playerVec);
-            int blocksTravelled;
+            double distanceToLinked = linkedLocation.distance(playerLocation);
 
-            // Is close enough to directly teleport to linked entity
-            if (blocksToTravel <= maxDirectTravelStep) {
-                // Get surface blocks around linked entity
-                List<Block> linkedEntitySurfaceBlocks = getRelativeSurfaceBlocks(linkedEntityLocation, 8);
-                int surfaceBlocksCount = linkedEntitySurfaceBlocks.size();
-                Block linkedEntityBlock = linkedEntityLocation.getBlock();
-                Location safeTeleportLocation = null;
-                Random rand = new Random();
+            // Player can teleport directly to linked entity
+            if(distanceToLinked <= maxDirectTravelStep) {
+                // Linked entity is surrounded by solid blocks. Can not teleport closer.
+                if(isEntityBlockedIn(linkedEntity)) {
+                    player.sendMessage(TravelersWand.getPlugin().getName() + ": Linked entity is surrounded by solid blocks on all sides.");
+                    return;
+                }
 
-                for(Block block : linkedEntitySurfaceBlocks) {
-                    if(block == linkedEntityBlock) {
-                        surfaceBlocksCount--;
-                        continue;
+                Block linkedBlock = linkedLocation.getBlock();
+                Block blockAboveLinked = BlockUtils.getFirstSolidBlockAbove(linkedBlock);
+
+                boolean isGlassRoof = false;
+                boolean isShadedArea = false;
+
+                // Is there a solid block above the players head?
+                if(blockAboveLinked != null) {
+                    List<Block> planeAboveHead = BlockUtils.getBlocksInPlane(blockAboveLinked, 10, 10);
+                    // Remove all blocks with name that don't end in PLANKS (make this compare with a list at some point)
+
+                    String[] reduceFilter = {"PLANKS", "LOG", "WOOD", "SLAB", "BRICKS"};
+                    List<Block> reducedCollection = BlockUtils.reduceBlockCollection(planeAboveHead, reduceFilter);
+
+                    player.sendMessage("Reduced collection size: " + reducedCollection.size());
+
+                    List<Block> cubeAboveHead = BlockUtils.getBlocksInCube(blockAboveLinked, 5);
+                    cubeAboveHead.removeIf((Block block) -> { return block.getType().isAir(); });
+
+                    isGlassRoof = blockAboveLinked.getLightFromSky() == 15 && blockAboveLinked.getType() == Material.GLASS;
+                    isShadedArea = BlockUtils.getAverageLightLevelInArea(blockAboveLinked, 4, 4, false) <= 13;
+
+                    player.sendMessage(TravelersWand.getPlugin().getName() + ": There is a block above the linked entities head.");
+                    player.sendMessage(TravelersWand.getPlugin().getName() + ": There are " + planeAboveHead.size() + " blocks in a plane, above linked entities head.");
+                    player.sendMessage(TravelersWand.getPlugin().getName() + ": There are " + cubeAboveHead.size() + " blocks in a cube, above linked entities head.");
+
+                    if(isGlassRoof) {
+                        player.sendMessage(TravelersWand.getPlugin().getName() + ": Linked entity has glass above its head, and light level == 15: glass roof");
+
+                        if(isShadedArea) {
+                            player.sendMessage(TravelersWand.getPlugin().getName() + ": Linked entity is in a shaded area under a glass roof. Likely inside a house!");
+                        }
                     }
-                    int randSurfaceBlockIndex = rand.nextInt(surfaceBlocksCount);
-                    Block randomSurfaceBlock = linkedEntitySurfaceBlocks.get(randSurfaceBlockIndex);
-                    safeTeleportLocation = new Location(
-                            player.getWorld(),
-                            randomSurfaceBlock.getX() + 0.5,
-                            player.getWorld().getHighestBlockAt(randomSurfaceBlock.getLocation()).getY() + 1,
-                            randomSurfaceBlock.getZ() + 0.5
-                    );
-                    break;
                 }
-                if(safeTeleportLocation != null) {
-                    player.teleport(safeTeleportLocation);
-                } else {
-                    player.sendMessage(TravelersWand.getPlugin().getName() + ": No safe location around linked entity to teleport to.");
-                }
-                blocksTravelled = (int)blocksToTravel;
-            } else {
-                List<Block> possibleTravelBlocks = getRelativeSurfaceBlocks(playerLocation, maxIndividualTravelStep);
-                Block travelBlock = getTravelBlock(possibleTravelBlocks, linkedEntityLocation);
-                if(travelBlock == null) return;
 
-                Location possibleLocation = new Location(
-                        player.getWorld(),
-                        travelBlock.getLocation().getX() + 0.5,
-                        player.getWorld().getHighestBlockAt(travelBlock.getLocation()).getY() + 1,
-                        travelBlock.getLocation().getZ() + 0.5
-                );
+                // Get block linked entity is standing on
+                Block linkedFeet = linkedLocation.getBlock().getRelative(BlockFace.DOWN);
+                List<List<Block>> pillarsCardinal = BlockUtils.getPillarsInCardinalDirections(linkedFeet, 4, 10);
 
-                Block feet = new Location(player.getWorld(), possibleLocation.getX(), possibleLocation.getY()-1, possibleLocation.getZ()).getBlock();
-                //System.out.println(feet.getType());
-
-                player.teleport(possibleLocation);
-                blocksTravelled = maxIndividualTravelStep;
+                player.sendMessage("Pillars around linked entity: " + pillarsCardinal.size());
             }
-
-            player.sendMessage(TravelersWand.getPlugin().getName() + ": you travelled " + blocksTravelled + " blocks.");
         }
     }
 
-    // Doesn't really work... Hmmmm
-    public static boolean isSafeLocation(Location location) {
-        Block feet = location.getBlock();
-        if (!feet.getType().isTransparent() && !feet.getLocation().add(0, 1, 0).getBlock().getType().isTransparent()) {
-            return false; // not transparent (will suffocate)
-        }
-        Block head = feet.getRelative(BlockFace.UP);
-        if (!head.getType().isTransparent()) {
-            return false; // not transparent (will suffocate)
-        }
-        Block ground = feet.getRelative(BlockFace.DOWN);
-        if (!ground.getType().isSolid()) {
-            return false; // not solid
-        }
-        return true;
+    private boolean isLinkedUUIDSet(UUID uuid) {
+        return uuid != null && !uuid.toString().isEmpty();
     }
 
-    private List<Block> getRelativeSurfaceBlocks(Location location, int radius) {
-        List<Block> blocks = new ArrayList<>();
-
-        int xCenter = (int)location.getX();
-        int zCenter = (int)location.getZ();
-
-        for(int x = (xCenter-radius); x <= (xCenter+radius); x++) {
-            for(int z = (zCenter-radius); z <= (zCenter+radius); z++) {
-                if((xCenter - x) * (xCenter - x) + (zCenter - z) * (zCenter - z) <= radius * radius) { // block is within radius
-                    blocks.add(new Location(location.getWorld(), x, location.getY(), z).getBlock());
-                }
+    private Entity getEntityInWorldByUUID(UUID uuid, World world) {
+        for(Entity entity : world.getLivingEntities()) {
+            if (entity.getUniqueId().equals(uuid)) {
+                return entity;
             }
         }
-
-        return blocks;
+        return null;
     }
 
-    private Block getTravelBlock(List<Block> possibleTravelBlocks, Location targetLocation) {
-        //Vector temp = locationTo.toVector().subtract(locationFrom.toVector()).normalize();
-        Block finalBlock = null;
-        int smallestDist = Integer.MAX_VALUE;
+    private boolean isInWorldEnvironment(Entity entity, World.Environment environment) {
+        return entity.getWorld().getEnvironment().equals(environment);
+    }
 
-        for (Block block : possibleTravelBlocks) {
-            int tempDist = (int) targetLocation.toVector().distance(block.getLocation().toVector());
+    private boolean isEntityBlockedIn(Entity entity) {
+        Block entityFeet = entity.getLocation().getBlock().getRelative(BlockFace.DOWN);
+        List<Block> blocks = BlockUtils.getCardinalNeighborBlocks(entityFeet, 2, 2);
+        int blockedCount = 0;
 
-            if (tempDist < smallestDist) {
-                smallestDist = tempDist;
-                finalBlock = block;
-            }
+        for(Block b : blocks) {
+            if(b.isSolid()) blockedCount++;
         }
 
-        return finalBlock;
+        return blockedCount == blocks.size();
+    }
+
+    // Consider renaming to something like "isAreaAroundBlockShaded"
+    private boolean isEntityIndoors(Block block, int depthCheckX, int depthCheckZ) {
+        return BlockUtils.getAverageLightLevelInArea(block, depthCheckX, depthCheckZ, true) <= 13;
     }
 
 }
