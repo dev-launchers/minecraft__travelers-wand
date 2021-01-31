@@ -4,14 +4,11 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
-import org.bukkit.material.Coal;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.Predicate;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
+import java.util.Set;
 
 public class BlockUtils {
 
@@ -81,27 +78,8 @@ public class BlockUtils {
         return pillar;
     }
 
-    static int getAverageLightLevelInArea(Block center, int widthX, int widthZ, boolean ignoreSolid) {
-        List<Block> blocksBelowCenter = getBlocksInPlane(center.getRelative(BlockFace.DOWN), widthX, widthZ);
-        int cumulativeLightLevel = 0;
-        int blocksToAverage = blocksBelowCenter.size();
-
-        for(Block block : blocksBelowCenter) {
-            if((ignoreSolid && block.getType().isSolid()) && block.getType() == Material.GLASS) { // Consider Glass solid
-                if(blocksToAverage > 1) blocksToAverage--;
-            }
-            else if(block.getType() == Material.GLASS) {
-                cumulativeLightLevel += 14;
-            } else {
-                cumulativeLightLevel += block.getLightFromSky();
-            }
-        }
-
-        return cumulativeLightLevel / blocksToAverage;
-    }
-
     static List<Block> getBlocksInPlane(Block center, int widthX, int widthZ) {
-        List<Block> blocks = new ArrayList<Block>();
+        List<Block> blocks = new ArrayList<>();
         for(double x = center.getLocation().getX() - widthX; x <= center.getLocation().getX() + widthX; x++) {
             for(double z = center.getLocation().getZ() - widthZ; z <= center.getLocation().getZ() + widthZ; z++) {
                 Location loc = new Location(center.getWorld(), x, center.getY(), z);
@@ -124,6 +102,32 @@ public class BlockUtils {
         }
 
         return blocks;
+    }
+
+    static double getPercentTypeInCollection(Set<Material> type, List<Block> collection, double[] weights) {
+        double countSame = 0.0;
+
+        for(Block b : collection) {
+            for(Material m : type) {
+                if (b.getType().name().equals(m.name())) {
+                    countSame += weights[0];
+                }
+                else if (b.getType().name().startsWith(m.name())) {
+                    countSame += weights[1];
+                }
+                else if (b.getType().name().endsWith(m.name())) {
+                    countSame += weights[2];
+                }
+                else if (b.getType().name().contains(m.name())) {
+                    countSame += weights[3];
+                }
+            }
+        }
+
+        if(countSame > 0.0)
+            return (countSame / collection.size());
+        else
+            return 0.0;
     }
 
     static List<Block> reduceBlockCollection(List<Block> collection, String[] reduceFilter) {

@@ -17,8 +17,6 @@ import org.bukkit.inventory.PlayerInventory;
 
 import java.io.IOException;
 import java.util.*;
-import java.util.function.Supplier;
-import java.util.stream.Stream;
 
 public class PlayerListener implements Listener {
 
@@ -103,14 +101,20 @@ public class PlayerListener implements Listener {
             Block clickedBlock = event.getClickedBlock();
             assert clickedBlock != null;
 
-            player.sendMessage("Average light level in area: " + BlockUtils.getAverageLightLevelInArea(clickedBlock, 2, 2, true));
+            player.sendMessage("Average light level in area: " + LocationUtils.getAverageSkyLightLevelInArea(clickedBlock, 2, 2, true));
         }
 
         if(action == Action.RIGHT_CLICK_BLOCK && mainHand.getType() == Material.COMPASS) {
             Block clickedBlock = event.getClickedBlock();
             assert clickedBlock != null;
 
-            Block blockAboveClicked = BlockUtils.getFirstSolidBlockAbove(clickedBlock);
+            LocationUtils.LocationType locationGuess = LocationUtils.guessLocation(clickedBlock.getLocation(), 4);
+
+            if(locationGuess == LocationUtils.LocationType.CAVE) {
+                player.sendMessage("YOU ARE PROBABLY IN A CAVE!");
+            } else {
+                player.sendMessage("you are not in a cave...");
+            }
         }
 
         /* END: JUST FOR TESTING */
@@ -151,29 +155,27 @@ public class PlayerListener implements Listener {
                 }
 
                 Block linkedBlock = linkedLocation.getBlock();
-                Block blockAboveLinked = BlockUtils.getFirstSolidBlockAbove(linkedBlock);
+                //Block blockAboveLinked = BlockUtils.getFirstSolidBlockAbove(linkedBlock);
+                Block blockAboveLinked = linkedBlock.getRelative(0,3,0); // for a future method: modY = (radius of cube - 1) (Takes into account feet and blocks up three!)
+
 
                 boolean isGlassRoof = false;
                 boolean isShadedArea = false;
 
-                // Is there a solid block above the players head?
+                // Is there a solid block above the players head? Maybe check instead if there is a certain amount of solid blocks above?
                 if(blockAboveLinked != null) {
-                    List<Block> planeAboveHead = BlockUtils.getBlocksInPlane(blockAboveLinked, 10, 10);
-                    // Remove all blocks with name that don't end in PLANKS (make this compare with a list at some point)
+                    //List<Block> planeAboveHead = BlockUtils.getBlocksInPlane(blockAboveLinked, 6, 6);
+                    //String[] reduceFilter = {"PLANKS", "LOG", "WOOD", "SLAB", "BRICKS", "LEAVES"};
+                    //planeAboveHead = BlockUtils.reduceBlockCollection(planeAboveHead, reduceFilter);
+                    //player.sendMessage(TravelersWand.getPlugin().getName() + ": There are " + planeAboveHead.size() + " blocks in a plane, above linked entities head.");
 
-                    String[] reduceFilter = {"PLANKS", "LOG", "WOOD", "SLAB", "BRICKS"};
-                    List<Block> reducedCollection = BlockUtils.reduceBlockCollection(planeAboveHead, reduceFilter);
-
-                    player.sendMessage("Reduced collection size: " + reducedCollection.size());
-
-                    List<Block> cubeAboveHead = BlockUtils.getBlocksInCube(blockAboveLinked, 5);
-                    cubeAboveHead.removeIf((Block block) -> { return block.getType().isAir(); });
+                    List<Block> cubeAboveHead = BlockUtils.getBlocksInCube(blockAboveLinked, 4);
+                    cubeAboveHead.removeIf(block -> block.getType().isAir());
 
                     isGlassRoof = blockAboveLinked.getLightFromSky() == 15 && blockAboveLinked.getType() == Material.GLASS;
-                    isShadedArea = BlockUtils.getAverageLightLevelInArea(blockAboveLinked, 4, 4, false) <= 13;
+                    isShadedArea = LocationUtils.getAverageSkyLightLevelInArea(blockAboveLinked, 4, 4, false) <= 13;
 
                     player.sendMessage(TravelersWand.getPlugin().getName() + ": There is a block above the linked entities head.");
-                    player.sendMessage(TravelersWand.getPlugin().getName() + ": There are " + planeAboveHead.size() + " blocks in a plane, above linked entities head.");
                     player.sendMessage(TravelersWand.getPlugin().getName() + ": There are " + cubeAboveHead.size() + " blocks in a cube, above linked entities head.");
 
                     if(isGlassRoof) {
@@ -187,7 +189,7 @@ public class PlayerListener implements Listener {
 
                 // Get block linked entity is standing on
                 Block linkedFeet = linkedLocation.getBlock().getRelative(BlockFace.DOWN);
-                List<List<Block>> pillarsCardinal = BlockUtils.getPillarsInCardinalDirections(linkedFeet, 4, 10);
+                List<List<Block>> pillarsCardinal = BlockUtils.getPillarsInCardinalDirections(linkedFeet, 3, 10);
 
                 player.sendMessage("Pillars around linked entity: " + pillarsCardinal.size());
             }
@@ -221,11 +223,6 @@ public class PlayerListener implements Listener {
         }
 
         return blockedCount == blocks.size();
-    }
-
-    // Consider renaming to something like "isAreaAroundBlockShaded"
-    private boolean isEntityIndoors(Block block, int depthCheckX, int depthCheckZ) {
-        return BlockUtils.getAverageLightLevelInArea(block, depthCheckX, depthCheckZ, true) <= 13;
     }
 
 }
