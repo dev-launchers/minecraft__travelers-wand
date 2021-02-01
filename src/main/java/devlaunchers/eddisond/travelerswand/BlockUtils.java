@@ -5,10 +5,7 @@ import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 public class BlockUtils {
 
@@ -90,7 +87,7 @@ public class BlockUtils {
     }
 
     static List<Block> getCardinalNeighborBlocks(Block start, int reach, int height) {
-        List<Block> blocks = new ArrayList<Block>();
+        List<Block> blocks = new ArrayList<>();
 
         for(int i = 1; i <= reach; i++) {
             for(int j = 1; j <= height; j++) {
@@ -104,30 +101,19 @@ public class BlockUtils {
         return blocks;
     }
 
-    static double getPercentTypeInCollection(Set<Material> type, List<Block> collection, double[] weights) {
+    static double getPercentTypeInCollection(HashMap<Material, Double> weightedType, List<Block> collection) {
         double countSame = 0.0;
 
         for(Block b : collection) {
-            for(Material m : type) {
-                if (b.getType().name().equals(m.name())) {
-                    countSame += weights[0];
-                }
-                else if (b.getType().name().startsWith(m.name())) {
-                    countSame += weights[1];
-                }
-                else if (b.getType().name().endsWith(m.name())) {
-                    countSame += weights[2];
-                }
-                else if (b.getType().name().contains(m.name())) {
-                    countSame += weights[3];
+            for(Material m : weightedType.keySet()) {
+                if (b.getType().name().contains(m.name())) {
+
+                    countSame += (weightedType.get(m) / weightedType.size());
                 }
             }
         }
 
-        if(countSame > 0.0)
-            return (countSame / collection.size());
-        else
-            return 0.0;
+        return Math.max(countSame/* / weightedType.size()*/, 0.0);
     }
 
     static List<Block> reduceBlockCollection(List<Block> collection, String[] reduceFilter) {
@@ -143,11 +129,11 @@ public class BlockUtils {
         return reducedCollection;
     }
 
-    static List<Block> getBlocksInCube(Block start, int radius) {
+    static List<Block> getBlocksInCuboid(Block start, int widthX, int widthZ, int height) {
         List<Block> blocks = new ArrayList<Block>();
-        for(double x = start.getLocation().getX() - radius; x <= start.getLocation().getX() + radius; x++){
-            for(double y = start.getLocation().getY() - radius; y <= start.getLocation().getY() + radius; y++){
-                for(double z = start.getLocation().getZ() - radius; z <= start.getLocation().getZ() + radius; z++){
+        for(double x = start.getLocation().getX() - widthX; x <= start.getLocation().getX() + widthX; x++){
+            for(double y = start.getLocation().getY() - height; y <= start.getLocation().getY() + height; y++){
+                for(double z = start.getLocation().getZ() - widthZ; z <= start.getLocation().getZ() + widthZ; z++){
                     Location loc = new Location(start.getWorld(), x, y, z);
                     blocks.add(loc.getBlock());
                 }

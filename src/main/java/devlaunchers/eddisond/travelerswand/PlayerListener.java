@@ -12,6 +12,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.player.*;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 
@@ -80,6 +81,7 @@ public class PlayerListener implements Listener {
     @EventHandler(priority = EventPriority.HIGH)
     public void onUseWand(PlayerInteractEvent event) {
         event.setCancelled(false);
+        if(event.getHand() != EquipmentSlot.HAND) return;
 
         Player player = event.getPlayer();
         PlayerInventory inventory = player.getInventory();
@@ -108,13 +110,37 @@ public class PlayerListener implements Listener {
             Block clickedBlock = event.getClickedBlock();
             assert clickedBlock != null;
 
-            LocationUtils.LocationType locationGuess = LocationUtils.guessLocation(clickedBlock.getLocation(), 4);
+            List<Block> blocks = BlockUtils.getBlocksInCuboid(clickedBlock, 6, 2, 2);
+            blocks.removeIf(block -> block.getType().isAir());
+
+            List<Material> allMaterials = new ArrayList<>();
+
+            for(Block b : blocks) {
+                allMaterials.add(b.getType());
+            }
+
+            Map<Material, Integer> materialsCount = new HashMap<Material, Integer>();
+
+            for(Material m : allMaterials) {
+                if(!materialsCount.containsKey(m)) {
+                    materialsCount.put(m, 1);
+                } else {
+                    materialsCount.replace(m, materialsCount.get(m)+1);
+                }
+            }
+
+            materialsCount.forEach((k, v) -> {
+                System.out.println("PERCENTAGE OF " + k.name() + ", " + v*100/allMaterials.size() + "%");
+            });
+
+
+            /*LocationUtils.LocationType locationGuess = LocationUtils.guessLocation(clickedBlock.getLocation(), 3);
 
             if(locationGuess == LocationUtils.LocationType.CAVE) {
                 player.sendMessage("YOU ARE PROBABLY IN A CAVE!");
             } else {
                 player.sendMessage("you are not in a cave...");
-            }
+            }*/
         }
 
         /* END: JUST FOR TESTING */
@@ -169,7 +195,7 @@ public class PlayerListener implements Listener {
                     //planeAboveHead = BlockUtils.reduceBlockCollection(planeAboveHead, reduceFilter);
                     //player.sendMessage(TravelersWand.getPlugin().getName() + ": There are " + planeAboveHead.size() + " blocks in a plane, above linked entities head.");
 
-                    List<Block> cubeAboveHead = BlockUtils.getBlocksInCube(blockAboveLinked, 4);
+                    List<Block> cubeAboveHead = BlockUtils.getBlocksInCuboid(blockAboveLinked, 4, 4, 4);
                     cubeAboveHead.removeIf(block -> block.getType().isAir());
 
                     isGlassRoof = blockAboveLinked.getLightFromSky() == 15 && blockAboveLinked.getType() == Material.GLASS;

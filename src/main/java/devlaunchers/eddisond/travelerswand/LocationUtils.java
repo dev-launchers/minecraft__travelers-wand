@@ -19,20 +19,22 @@ public class LocationUtils {
         LocationType locationType = null;
 
         Block guessFrom = location.getBlock().getRelative(0, dimensionsToCheck-1, 0);
-        List<Block> cubeToCheck = BlockUtils.getBlocksInCube(guessFrom, dimensionsToCheck);
+        List<Block> cubeToCheck = BlockUtils.getBlocksInCuboid(guessFrom, dimensionsToCheck, dimensionsToCheck, dimensionsToCheck);
         cubeToCheck.removeIf(block -> block.getType().isAir());
 
-        // EXACT MATCH, STARTS WITH | ENDS WITH, CONTAINS
-        double[] weights = {1.0, 0.5, 0.5, 0.25};
-
-        double facilityPercent = BlockUtils.getPercentTypeInCollection(MaterialCategory.facility, cubeToCheck, weights);
-        double buildingPercent = BlockUtils.getPercentTypeInCollection(MaterialCategory.building, cubeToCheck, weights);
-        double naturePercent = BlockUtils.getPercentTypeInCollection(MaterialCategory.nature, cubeToCheck, weights);
-        double waterPercent = BlockUtils.getPercentTypeInCollection(MaterialCategory.water, cubeToCheck, weights);
+        double facilityPercent = BlockUtils.getPercentTypeInCollection(MaterialCategory.facilityWeighted, cubeToCheck);
+        double buildingPercent = BlockUtils.getPercentTypeInCollection(MaterialCategory.buildingWeighted, cubeToCheck);
+        double naturePercent = BlockUtils.getPercentTypeInCollection(MaterialCategory.natureWeighted, cubeToCheck);
+        double waterPercent = BlockUtils.getPercentTypeInCollection(MaterialCategory.waterWeighted, cubeToCheck);
         int averageSkyLightLevel = getAverageSkyLightLevelInArea(guessFrom, dimensionsToCheck/2, dimensionsToCheck/2, true);
         int averageBlockLightLevel = getAverageBlockLightLevelInArea(guessFrom, dimensionsToCheck/2, dimensionsToCheck/2, false);
 
         if(guessFrom.getY() <= 60 && naturePercent >= 0.65 && averageSkyLightLevel <= 1) locationType = LocationType.CAVE;
+
+        /*System.out.println(facilityPercent + " % facility.");
+        System.out.println(buildingPercent + " % building.");
+        System.out.println(naturePercent + " % nature.");
+        System.out.println(waterPercent + " % water.");*/
 
         return locationType;
     }
