@@ -237,7 +237,7 @@ public class PlayerListener implements Listener {
 		int blockedCount = 0;
 
 		for (Block b : blocks) {
-			if (b.getType().isSolid())
+			if (b.isSolid())
 				blockedCount++;
 		}
 

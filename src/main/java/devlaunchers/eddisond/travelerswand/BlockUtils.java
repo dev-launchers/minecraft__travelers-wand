@@ -16,7 +16,7 @@ public class BlockUtils {
 
         for(int i = 1; i <= 256 - lookFrom.getY(); i++) {
             Block b = lookFrom.getRelative(direction.getModX(), direction.getModY()*i, direction.getModZ());
-            if(b.getType().isSolid()) {
+            if(b.isSolid()) {
                 System.out.println("First solid block found at: " + b.getY());
                 return b;
             }
@@ -28,7 +28,7 @@ public class BlockUtils {
     static Block getFirstSolidBlockInDirection(Block lookFrom, BlockFace direction, int depth) {
         for(int i = 1; i <= depth; i++) {
             Block b = lookFrom.getRelative(direction.getModX()*i, direction.getModY()*i, direction.getModZ()*i);
-            if(b.getType().isSolid()) return b;
+            if(b.isSolid()) return b;
         }
         return null;
     }
@@ -64,7 +64,7 @@ public class BlockUtils {
             Block relative = b.getRelative(0, i, 0);
 
             if(!pillar.contains(relative)) { // Block is not in pillar yet, consider adding...
-                if(relative.getType().isSolid()) {
+                if(relative.isSolid()) {
                     pillar.add(relative); // Is solid - add to pillar.
                 } else {
                     break; // Is not solid - reached top of pillar.
