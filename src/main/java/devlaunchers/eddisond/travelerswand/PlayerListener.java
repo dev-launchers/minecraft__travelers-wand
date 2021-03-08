@@ -1,5 +1,12 @@
 package devlaunchers.eddisond.travelerswand;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
@@ -11,244 +18,230 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
-import org.bukkit.event.player.*;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 
-import java.io.IOException;
-import java.util.*;
-
 public class PlayerListener implements Listener {
 
-    final int maxDirectTravelStep = 8; // max distance player has to be from linked location to travel immediately
-    final int maxIndividualTravelStep = 4; // max distance player can tp with each use, when outside of direct travel distance
+	final int maxDirectTravelStep = 8; // max distance player has to be from linked location to travel immediately
+	final int maxIndividualTravelStep = 4; // max distance player can tp with each use, when outside of direct travel
+											// distance
 
-    UUID linkedUUID;
+	@EventHandler
+	public void onPlayerLeaveEvent(PlayerQuitEvent event) {
+		PlayerData.savePlayerData(event.getPlayer().getUniqueId());
+	}
 
-    @EventHandler
-    public void onPlayerJoinEvent(PlayerJoinEvent event) {
-        if(TravelersWand.getPlayerData() != null) {
-            TravelersWand.getPlayerData().createFile(event.getPlayer().getUniqueId());
+	@EventHandler(priority = EventPriority.HIGH)
+	public void onConnectWand(PlayerInteractEntityEvent event) {
+		Player player = event.getPlayer();
+		PlayerInventory inventory = player.getInventory();
+		ItemStack mainHand = inventory.getItemInMainHand();
 
-            System.out.println("playerData and .yml file exist");
-            System.out.println("yml file name: " + TravelersWand.getPlayerData().file.getName());
+		if ((event.getRightClicked() instanceof org.bukkit.entity.Cow || event.getRightClicked() instanceof Player)
+				&& mainHand.getType() == Material.EMERALD) { // switch between org.bukkit.entity.Cow and Player for
+																// offline / online testing
+			Entity entity = event.getRightClicked();
 
-            // uuid is not loaded into memory yet || player data file somehow got removed as the plugin was running
-            if(linkedUUID == null) {
-                // try to get uuid in string format, from player data
-                String uuidString = TravelersWand.getPlayerData().fileConfig.getString("linkedUUID");
+			if (entity.getUniqueId().equals(PlayerData.getLinkedUUIDForPlayer(player.getUniqueId())))
+				return; // Ignore if already linked (for now, might change later)
 
-                if(uuidString != null) {
-                    linkedUUID = UUID.fromString(uuidString);
-                }
-            } // otherwise, just continue on with the program :)
-        }
-    }
+			PlayerData.setLinkedUUIDForPlayer(player.getUniqueId(), entity.getUniqueId());
 
-    @EventHandler
-    public void onPlayerLeaveEvent(PlayerQuitEvent event) {
-        try {
-            // Save "playerUUID".yml file
-            TravelersWand.getPlayerData().fileConfig.save(TravelersWand.getPlayerData().file);
+			player.sendMessage(player.getUniqueId() + " linked with " + entity.getUniqueId());
+		}
+	}
 
-            // Attributes, that should not persist in memory after player leaves, are set to null
-            if(linkedUUID != null) linkedUUID = null;
+	@EventHandler(priority = EventPriority.HIGH)
+	public void onUseWand(PlayerInteractEvent event) {
+		event.setCancelled(false);
+		if (event.getHand() != EquipmentSlot.HAND)
+			return;
 
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
+		Player player = event.getPlayer();
+		PlayerInventory inventory = player.getInventory();
+		Action action = event.getAction();
+		ItemStack mainHand = inventory.getItemInMainHand();
 
-    @EventHandler(priority = EventPriority.HIGH)
-    public void onConnectWand(PlayerInteractEntityEvent event) {
-        Player player = event.getPlayer();
-        PlayerInventory inventory = player.getInventory();
-        ItemStack mainHand = inventory.getItemInMainHand();
+		/* START: JUST FOR TESTING */
+		if (action == Action.RIGHT_CLICK_BLOCK && mainHand.getType() == Material.DIAMOND) {
+			Block clickedBlock = event.getClickedBlock();
+			assert clickedBlock != null;
 
-        if((event.getRightClicked() instanceof org.bukkit.entity.Cow || event.getRightClicked() instanceof Player) && mainHand.getType() == Material.EMERALD) { // switch between org.bukkit.entity.Cow and Player for offline / online testing
-            Entity entity = event.getRightClicked();
+			List<Block> blocks = BlockUtils.getBlocksInPlane(clickedBlock, 2, 2);
+			for (Block b : blocks) {
+				b.setType(Material.LIME_WOOL);
+			}
+		}
 
-            if(entity.getUniqueId().equals(linkedUUID)) return; // Ignore if already linked (for now, might change later)
+		if (action == Action.RIGHT_CLICK_BLOCK && mainHand.getType() == Material.GOLDEN_CARROT) {
+			Block clickedBlock = event.getClickedBlock();
+			assert clickedBlock != null;
 
-            TravelersWand.getPlayerData().fileConfig.set("linkedUUID", entity.getUniqueId().toString());
-            linkedUUID = entity.getUniqueId();
+			player.sendMessage("Average light level in area: "
+					+ LocationUtils.getAverageSkyLightLevelInArea(clickedBlock, 2, 2, true));
+		}
 
-            player.sendMessage(player.getUniqueId() + " linked with " + linkedUUID);
-        }
-    }
+		if (action == Action.RIGHT_CLICK_BLOCK && mainHand.getType() == Material.COMPASS) {
+			Block clickedBlock = event.getClickedBlock();
+			assert clickedBlock != null;
 
-    @EventHandler(priority = EventPriority.HIGH)
-    public void onUseWand(PlayerInteractEvent event) {
-        event.setCancelled(false);
-        if(event.getHand() != EquipmentSlot.HAND) return;
+			List<Block> blocks = BlockUtils.getBlocksInCuboid(clickedBlock, 6, 2, 2);
+			blocks.removeIf(block -> block.getType().isAir());
 
-        Player player = event.getPlayer();
-        PlayerInventory inventory = player.getInventory();
-        Action action = event.getAction();
-        ItemStack mainHand = inventory.getItemInMainHand();
+			List<Material> allMaterials = new ArrayList<>();
 
-        /* START: JUST FOR TESTING */
-        if(action == Action.RIGHT_CLICK_BLOCK && mainHand.getType() == Material.DIAMOND) {
-            Block clickedBlock = event.getClickedBlock();
-            assert clickedBlock != null;
+			for (Block b : blocks) {
+				allMaterials.add(b.getType());
+			}
 
-            List<Block> blocks = BlockUtils.getBlocksInPlane(clickedBlock, 2, 2);
-            for(Block b : blocks) {
-                b.setType(Material.LIME_WOOL);
-            }
-        }
+			Map<Material, Integer> materialsCount = new HashMap<Material, Integer>();
 
-        if(action == Action.RIGHT_CLICK_BLOCK && mainHand.getType() == Material.GOLDEN_CARROT) {
-            Block clickedBlock = event.getClickedBlock();
-            assert clickedBlock != null;
+			for (Material m : allMaterials) {
+				if (!materialsCount.containsKey(m)) {
+					materialsCount.put(m, 1);
+				} else {
+					materialsCount.replace(m, materialsCount.get(m) + 1);
+				}
+			}
 
-            player.sendMessage("Average light level in area: " + LocationUtils.getAverageSkyLightLevelInArea(clickedBlock, 2, 2, true));
-        }
+			materialsCount.forEach((k, v) -> {
+				System.out.println("PERCENTAGE OF " + k.name() + ", " + v * 100 / allMaterials.size() + "%");
+			});
 
-        if(action == Action.RIGHT_CLICK_BLOCK && mainHand.getType() == Material.COMPASS) {
-            Block clickedBlock = event.getClickedBlock();
-            assert clickedBlock != null;
+			/*
+			 * LocationUtils.LocationType locationGuess =
+			 * LocationUtils.guessLocation(clickedBlock.getLocation(), 3);
+			 * 
+			 * if(locationGuess == LocationUtils.LocationType.CAVE) {
+			 * player.sendMessage("YOU ARE PROBABLY IN A CAVE!"); } else {
+			 * player.sendMessage("you are not in a cave..."); }
+			 */
+		}
 
-            List<Block> blocks = BlockUtils.getBlocksInCuboid(clickedBlock, 6, 2, 2);
-            blocks.removeIf(block -> block.getType().isAir());
+		/* END: JUST FOR TESTING */
 
-            List<Material> allMaterials = new ArrayList<>();
+		// Teleport (as close as possible) to linked entity
+		if (action == Action.RIGHT_CLICK_AIR && mainHand.getType() == Material.EMERALD) {
 
-            for(Block b : blocks) {
-                allMaterials.add(b.getType());
-            }
+			// Is wand being used in any other world than the "NORMAL" / Overworld?
+			if (!isInWorldEnvironment(player, World.Environment.NORMAL)) {
+				player.sendMessage(TravelersWand.getPlugin().getName() + ": Currently only works in the Overworld.");
+				return;
+			}
 
-            Map<Material, Integer> materialsCount = new HashMap<Material, Integer>();
+			UUID linkedUUID = PlayerData.getLinkedUUIDForPlayer(player.getUniqueId());
+			
+			// Is player linked yet?
+			if (linkedUUID == null) {
+				player.sendMessage(TravelersWand.getPlugin().getName()
+						+ ": You have to link to another player first, before being able to use this item.");
+				return;
+			}
 
-            for(Material m : allMaterials) {
-                if(!materialsCount.containsKey(m)) {
-                    materialsCount.put(m, 1);
-                } else {
-                    materialsCount.replace(m, materialsCount.get(m)+1);
-                }
-            }
+			Entity linkedEntity = getEntityInWorldByUUID(linkedUUID, player.getWorld());
 
-            materialsCount.forEach((k, v) -> {
-                System.out.println("PERCENTAGE OF " + k.name() + ", " + v*100/allMaterials.size() + "%");
-            });
+			if (linkedEntity == null) {
+				player.sendMessage(TravelersWand.getPlugin().getName() + ": Could not get location of linked entity.");
+				return;
+			}
 
+			Location linkedLocation = linkedEntity.getLocation();
+			Location playerLocation = player.getLocation();
 
-            /*LocationUtils.LocationType locationGuess = LocationUtils.guessLocation(clickedBlock.getLocation(), 3);
+			double distanceToLinked = linkedLocation.distance(playerLocation);
 
-            if(locationGuess == LocationUtils.LocationType.CAVE) {
-                player.sendMessage("YOU ARE PROBABLY IN A CAVE!");
-            } else {
-                player.sendMessage("you are not in a cave...");
-            }*/
-        }
+			// Player can teleport directly to linked entity
+			if (distanceToLinked <= maxDirectTravelStep) {
+				// Linked entity is surrounded by solid blocks. Can not teleport closer.
+				if (isEntityBlockedIn(linkedEntity)) {
+					player.sendMessage(TravelersWand.getPlugin().getName()
+							+ ": Linked entity is surrounded by solid blocks on all sides.");
+					return;
+				}
 
-        /* END: JUST FOR TESTING */
+				Block linkedBlock = linkedLocation.getBlock();
+				// Block blockAboveLinked = BlockUtils.getFirstSolidBlockAbove(linkedBlock);
+				Block blockAboveLinked = linkedBlock.getRelative(0, 3, 0); // for a future method: modY = (radius of
+																			// cube - 1) (Takes into account feet and
+																			// blocks up three!)
 
-        // Teleport (as close as possible) to linked entity
-        if(action == Action.RIGHT_CLICK_AIR && mainHand.getType() == Material.EMERALD) {
-            
-            // Is wand being used in any other world than the "NORMAL" / Overworld?
-            if(!isInWorldEnvironment(player, World.Environment.NORMAL)) {
-                player.sendMessage(TravelersWand.getPlugin().getName() + ": Currently only works in the Overworld.");
-                return;
-            }
+				boolean isGlassRoof = false;
+				boolean isShadedArea = false;
 
-            // Is player linked yet?
-            if(!isLinkedUUIDSet(linkedUUID)) {
-                player.sendMessage(TravelersWand.getPlugin().getName() + ": You have to link to another player first, before being able to use this item.");
-                return;
-            }
+				// Is there a solid block above the players head? Maybe check instead if there
+				// is a certain amount of solid blocks above?
+				if (blockAboveLinked != null) {
+					// List<Block> planeAboveHead = BlockUtils.getBlocksInPlane(blockAboveLinked, 6,
+					// 6);
+					// String[] reduceFilter = {"PLANKS", "LOG", "WOOD", "SLAB", "BRICKS",
+					// "LEAVES"};
+					// planeAboveHead = BlockUtils.reduceBlockCollection(planeAboveHead,
+					// reduceFilter);
+					// player.sendMessage(TravelersWand.getPlugin().getName() + ": There are " +
+					// planeAboveHead.size() + " blocks in a plane, above linked entities head.");
 
-            Entity linkedEntity = getEntityInWorldByUUID(linkedUUID, player.getWorld());
+					List<Block> cubeAboveHead = BlockUtils.getBlocksInCuboid(blockAboveLinked, 4, 4, 4);
+					cubeAboveHead.removeIf(block -> block.getType().isAir());
 
-            if(linkedEntity == null) {
-                player.sendMessage(TravelersWand.getPlugin().getName() + ": Could not get location of linked entity.");
-                return;
-            }
+					isGlassRoof = blockAboveLinked.getLightFromSky() == 15
+							&& blockAboveLinked.getType() == Material.GLASS;
+					isShadedArea = LocationUtils.getAverageSkyLightLevelInArea(blockAboveLinked, 4, 4, false) <= 13;
 
-            Location linkedLocation = linkedEntity.getLocation();
-            Location playerLocation = player.getLocation();
+					player.sendMessage(
+							TravelersWand.getPlugin().getName() + ": There is a block above the linked entities head.");
+					player.sendMessage(TravelersWand.getPlugin().getName() + ": There are " + cubeAboveHead.size()
+							+ " blocks in a cube, above linked entities head.");
 
-            double distanceToLinked = linkedLocation.distance(playerLocation);
+					if (isGlassRoof) {
+						player.sendMessage(TravelersWand.getPlugin().getName()
+								+ ": Linked entity has glass above its head, and light level == 15: glass roof");
 
-            // Player can teleport directly to linked entity
-            if(distanceToLinked <= maxDirectTravelStep) {
-                // Linked entity is surrounded by solid blocks. Can not teleport closer.
-                if(isEntityBlockedIn(linkedEntity)) {
-                    player.sendMessage(TravelersWand.getPlugin().getName() + ": Linked entity is surrounded by solid blocks on all sides.");
-                    return;
-                }
+						if (isShadedArea) {
+							player.sendMessage(TravelersWand.getPlugin().getName()
+									+ ": Linked entity is in a shaded area under a glass roof. Likely inside a house!");
+						}
+					}
+				}
 
-                Block linkedBlock = linkedLocation.getBlock();
-                //Block blockAboveLinked = BlockUtils.getFirstSolidBlockAbove(linkedBlock);
-                Block blockAboveLinked = linkedBlock.getRelative(0,3,0); // for a future method: modY = (radius of cube - 1) (Takes into account feet and blocks up three!)
+				// Get block linked entity is standing on
+				Block linkedFeet = linkedLocation.getBlock().getRelative(BlockFace.DOWN);
+				List<List<Block>> pillarsCardinal = BlockUtils.getPillarsInCardinalDirections(linkedFeet, 3, 10);
 
+				player.sendMessage("Pillars around linked entity: " + pillarsCardinal.size());
+			}
+		}
+	}
 
-                boolean isGlassRoof = false;
-                boolean isShadedArea = false;
+	private Entity getEntityInWorldByUUID(UUID uuid, World world) {
+		for (Entity entity : world.getLivingEntities()) {
+			if (entity.getUniqueId().equals(uuid)) {
+				return entity;
+			}
+		}
+		return null;
+	}
 
-                // Is there a solid block above the players head? Maybe check instead if there is a certain amount of solid blocks above?
-                if(blockAboveLinked != null) {
-                    //List<Block> planeAboveHead = BlockUtils.getBlocksInPlane(blockAboveLinked, 6, 6);
-                    //String[] reduceFilter = {"PLANKS", "LOG", "WOOD", "SLAB", "BRICKS", "LEAVES"};
-                    //planeAboveHead = BlockUtils.reduceBlockCollection(planeAboveHead, reduceFilter);
-                    //player.sendMessage(TravelersWand.getPlugin().getName() + ": There are " + planeAboveHead.size() + " blocks in a plane, above linked entities head.");
+	private boolean isInWorldEnvironment(Entity entity, World.Environment environment) {
+		return entity.getWorld().getEnvironment().equals(environment);
+	}
 
-                    List<Block> cubeAboveHead = BlockUtils.getBlocksInCuboid(blockAboveLinked, 4, 4, 4);
-                    cubeAboveHead.removeIf(block -> block.getType().isAir());
+	private boolean isEntityBlockedIn(Entity entity) {
+		Block entityFeet = entity.getLocation().getBlock().getRelative(BlockFace.DOWN);
+		List<Block> blocks = BlockUtils.getCardinalNeighborBlocks(entityFeet, 2, 2);
+		int blockedCount = 0;
 
-                    isGlassRoof = blockAboveLinked.getLightFromSky() == 15 && blockAboveLinked.getType() == Material.GLASS;
-                    isShadedArea = LocationUtils.getAverageSkyLightLevelInArea(blockAboveLinked, 4, 4, false) <= 13;
+		for (Block b : blocks) {
+			if (b.isSolid())
+				blockedCount++;
+		}
 
-                    player.sendMessage(TravelersWand.getPlugin().getName() + ": There is a block above the linked entities head.");
-                    player.sendMessage(TravelersWand.getPlugin().getName() + ": There are " + cubeAboveHead.size() + " blocks in a cube, above linked entities head.");
-
-                    if(isGlassRoof) {
-                        player.sendMessage(TravelersWand.getPlugin().getName() + ": Linked entity has glass above its head, and light level == 15: glass roof");
-
-                        if(isShadedArea) {
-                            player.sendMessage(TravelersWand.getPlugin().getName() + ": Linked entity is in a shaded area under a glass roof. Likely inside a house!");
-                        }
-                    }
-                }
-
-                // Get block linked entity is standing on
-                Block linkedFeet = linkedLocation.getBlock().getRelative(BlockFace.DOWN);
-                List<List<Block>> pillarsCardinal = BlockUtils.getPillarsInCardinalDirections(linkedFeet, 3, 10);
-
-                player.sendMessage("Pillars around linked entity: " + pillarsCardinal.size());
-            }
-        }
-    }
-
-    private boolean isLinkedUUIDSet(UUID uuid) {
-        return uuid != null && !uuid.toString().isEmpty();
-    }
-
-    private Entity getEntityInWorldByUUID(UUID uuid, World world) {
-        for(Entity entity : world.getLivingEntities()) {
-            if (entity.getUniqueId().equals(uuid)) {
-                return entity;
-            }
-        }
-        return null;
-    }
-
-    private boolean isInWorldEnvironment(Entity entity, World.Environment environment) {
-        return entity.getWorld().getEnvironment().equals(environment);
-    }
-
-    private boolean isEntityBlockedIn(Entity entity) {
-        Block entityFeet = entity.getLocation().getBlock().getRelative(BlockFace.DOWN);
-        List<Block> blocks = BlockUtils.getCardinalNeighborBlocks(entityFeet, 2, 2);
-        int blockedCount = 0;
-
-        for(Block b : blocks) {
-            if(b.isSolid()) blockedCount++;
-        }
-
-        return blockedCount == blocks.size();
-    }
+		return blockedCount == blocks.size();
+	}
 
 }

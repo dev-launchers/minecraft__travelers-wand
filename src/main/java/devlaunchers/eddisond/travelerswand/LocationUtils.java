@@ -45,7 +45,7 @@ public class LocationUtils {
         int blocksToAverage = blocksBelowCenter.size();
 
         for(Block block : blocksBelowCenter) {
-            if((ignoreSolid && block.getType().isSolid()) && (block.getType() == Material.GLASS || block.getType() == Material.LAVA)) { // Consider Glass solid
+            if((ignoreSolid && block.isSolid()) && (block.getType() == Material.GLASS || block.getType() == Material.LAVA)) { // Consider Glass solid
                 if(blocksToAverage > 1) blocksToAverage--;
             }
             else if(block.getType() == Material.GLASS) {
@@ -64,7 +64,7 @@ public class LocationUtils {
         int blocksToAverage = blocksBelowCenter.size();
 
         for(Block block : blocksBelowCenter) {
-            if((ignoreSolid && block.getType().isSolid()) && block.getType() == Material.GLASS) { // Consider Glass solid
+            if((ignoreSolid && block.isSolid()) && block.getType() == Material.GLASS) { // Consider Glass solid
                 if(blocksToAverage > 1) blocksToAverage--;
             }
             else if(block.getType() == Material.GLASS) {
